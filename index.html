@@ -3,154 +3,577 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JS Chess - No Backend Needed</title>
+    <title>Pro JS Chess</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <style>
-        .square { width: 12.5%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; font-size: clamp(1rem, 5vw, 2.5rem); cursor: pointer; }
-        .white-sq { background-color: #f0d9b5; color: #b58863; }
-        .black-sq { background-color: #b58863; color: #f0d9b5; }
-        .selected { background-color: #7b61ff !important; color: white !important; }
-        .last-move { background-color: #f6f669cc !important; }
-        .piece-white { color: #ffffff; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4)); }
-        .piece-black { color: #111111; }
+        /* THEME CONFIGURATIONS */
+        :root {
+            /* Default: Green & Off-White */
+            --board-light: #ebecd0;
+            --board-dark: #779556;
+        }
+        
+        /* Green & Off-White (Classic Chess.com style) */
+        .theme-green { --board-light: #ebecd0; --board-dark: #779556; }
+        
+        /* Wooden (Rich Walnut and Oak) */
+        .theme-wooden { --board-light: #eecfad; --board-dark: #8a5837; }
+        
+        /* Ocean (Deep Sea and Sand) */
+        .theme-ocean { --board-light: #d1e1e8; --board-dark: #4d80a1; }
+
+        .square { 
+            width: 12.5%; 
+            aspect-ratio: 1/1; 
+            position: relative; 
+            float: left; 
+            transition: background-color 0.4s ease;
+        }
+        .white-sq { background-color: var(--board-light); color: var(--board-dark); }
+        .black-sq { background-color: var(--board-dark); color: var(--board-light); }
+        
+        /* Overlays & Highlights */
+        .highlight { position: relative; }
+        .highlight::after {
+            content: ''; position: absolute; width: 25%; height: 25%;
+            background: rgba(0,0,0,0.15); border-radius: 50%;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+        }
+        .capture-hint { background-color: rgba(235, 97, 80, 0.5) !important; }
+        .last-move { background-color: rgba(246, 246, 105, 0.6) !important; }
+        .selected { background-color: rgba(100, 255, 100, 0.5) !important; }
+        
+        .piece { 
+            cursor: grab; 
+            font-size: clamp(1.5rem, 5vw, 3rem); 
+            width: 100%; height: 100%; 
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10;
+        }
+        .piece-white { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .piece-black { color: #222; }
+
+        .coord-num { position: absolute; left: 2px; top: 2px; font-size: 0.7rem; font-weight: bold; opacity: 0.6; }
+        .coord-char { position: absolute; right: 2px; bottom: 0px; font-size: 0.7rem; font-weight: bold; opacity: 0.6; }
+        .captured-piece { font-size: 1.2rem; margin-right: -4px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3)); }
+        
+        .hidden { display: none !important; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
+<body class="bg-slate-950 text-slate-200 min-h-screen flex flex-col items-center justify-center p-2 md:p-6 font-sans">
 
-    <div class="max-w-5xl w-full flex flex-col md:flex-row gap-8">
-        <div class="flex-1 flex flex-col items-center bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-2xl">
-            <h1 class="text-2xl font-black mb-6 tracking-tighter text-cyan-400">PURE JS CHESS</h1>
-            
-            <div id="board" class="w-full max-w-[512px] flex flex-wrap border-4 border-slate-800 rounded shadow-2xl">
+    <div class="w-full max-w-5xl flex justify-between items-end mb-4 px-2">
+        <div>
+            <h1 class="text-3xl font-black tracking-tighter text-cyan-400"><i class="fas fa-chess-knight mr-2"></i>PRO CHESS</h1>
+        </div>
+        <div class="flex gap-4">
+            <div class="bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[80px]">
+                <div class="text-[10px] uppercase text-slate-400">Black</div>
+                <div id="timer-b" class="text-xl font-mono font-bold text-white">10:00</div>
+            </div>
+            <div class="bg-slate-800 p-2 rounded-lg border border-slate-700 min-w-[80px]">
+                <div class="text-[10px] uppercase text-slate-400">White</div>
+                <div id="timer-w" class="text-xl font-mono font-bold text-white">10:00</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-6xl w-full flex flex-col lg:flex-row gap-6">
+        
+        <div class="flex-1 flex flex-col items-center">
+            <div class="w-full max-w-[550px] flex justify-between mb-2 px-1">
+                <span id="player-label-b" class="font-bold text-slate-400"><i class="fas fa-robot mr-2"></i>AI (Black)</span>
+                <div id="captured-w" class="h-6 flex"></div>
+            </div>
+
+            <div class="relative p-1 bg-slate-800 rounded-lg shadow-2xl border-4 border-slate-700">
+                <div id="board" class="w-[90vw] max-w-[550px] aspect-square flex flex-wrap relative theme-green"></div>
+                
+                <div id="start-overlay" class="absolute inset-0 z-40 bg-slate-900/60 backdrop-blur-sm rounded flex flex-col items-center justify-center">
+                    <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl text-center">
+                        <i class="fas fa-chess-king text-6xl text-cyan-400 mb-4 block"></i>
+                        <h2 class="text-2xl font-black text-white mb-2">Grandmaster Chess</h2>
+                        <button onclick="startGame()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-8 py-3 rounded-full text-lg shadow-lg active:scale-95 transition mt-4">
+                            START GAME
+                        </button>
+                    </div>
                 </div>
 
-            <div class="w-full max-w-[512px] mt-8 flex justify-between items-center bg-slate-800/50 p-4 rounded-xl">
-                <div id="status" class="font-bold uppercase tracking-widest text-xs text-emerald-400">White's Turn</div>
-                <button onclick="resetGame()" class="bg-rose-600 hover:bg-rose-500 px-6 py-2 rounded-lg font-bold transition-transform active:scale-95 text-xs uppercase">
-                    Reset
-                </button>
+                <div id="promotion-modal" class="absolute inset-0 bg-black/80 z-50 flex items-center justify-center hidden rounded">
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-600 text-center">
+                        <h3 class="text-white font-bold mb-4">Promote to:</h3>
+                        <div class="flex gap-4">
+                            <button onclick="finalizePromotion('q')" class="text-4xl text-white hover:scale-110 transition"><i class="fas fa-chess-queen"></i></button>
+                            <button onclick="finalizePromotion('r')" class="text-4xl text-white hover:scale-110 transition"><i class="fas fa-chess-rook"></i></button>
+                            <button onclick="finalizePromotion('b')" class="text-4xl text-white hover:scale-110 transition"><i class="fas fa-chess-bishop"></i></button>
+                            <button onclick="finalizePromotion('n')" class="text-4xl text-white hover:scale-110 transition"><i class="fas fa-chess-knight"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full max-w-[550px] flex justify-between mt-2 px-1">
+                <span class="font-bold text-cyan-400"><i class="fas fa-user mr-2"></i>Player 1 (White)</span>
+                <div id="captured-b" class="h-6 flex"></div>
+            </div>
+
+            <div class="w-full max-w-[550px] mt-6 flex flex-wrap gap-4 justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <div class="flex gap-2 flex-wrap">
+                    <select id="game-mode" onchange="setGameMode(this.value)" class="bg-slate-800 text-sm p-2 rounded border border-slate-700 outline-none text-emerald-400 font-bold">
+                        <option value="ai">vs AI</option>
+                        <option value="friend">2 Player</option>
+                    </select>
+
+                    <select id="ai-level" class="bg-slate-800 text-sm p-2 rounded border border-slate-700 outline-none text-orange-400 font-bold">
+                        <option value="1">Level: Noob</option>
+                        <option value="2">Level: Casual</option>
+                        <option value="3">Level: Advanced</option>
+                    </select>
+
+                    <select id="theme-select" onchange="changeTheme(this.value)" class="bg-slate-800 text-sm p-2 rounded border border-slate-700 outline-none text-slate-200">
+                        <option value="green">Theme: Green</option>
+                        <option value="wooden">Theme: Wooden</option>
+                        <option value="ocean">Theme: Ocean</option>
+                    </select>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="undoMove()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-bold"><i class="fas fa-undo"></i> Undo</button>
+                    <button onclick="resetGame()" class="bg-rose-600 hover:bg-rose-500 px-6 py-2 rounded font-bold uppercase text-xs tracking-wider shadow-lg">Reset</button>
+                </div>
             </div>
         </div>
 
-        <div class="w-full md:w-72 bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-2xl flex flex-col h-[512px]">
-            <h2 class="font-bold text-slate-400 mb-4 flex items-center uppercase text-xs tracking-widest">
-                History
-            </h2>
-            <div id="history" class="flex-grow overflow-y-auto space-y-2 pr-2"></div>
+        <div class="w-full lg:w-80 bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[600px]">
+            <h2 class="font-bold text-slate-400 mb-2 uppercase text-xs tracking-widest">Status</h2>
+            <div id="status" class="text-lg font-bold text-emerald-400 mb-4">Waiting...</div>
+            <h2 class="font-bold text-slate-400 mb-2 uppercase text-xs tracking-widest">History</h2>
+            <div id="history" class="flex-grow overflow-y-auto pr-2 space-y-1 font-mono text-sm"></div>
         </div>
     </div>
 
     <script>
         const game = new Chess();
         const boardEl = document.getElementById('board');
+        const weights = { p: 10, n: 30, b: 30, r: 50, q: 90, k: 900 };
         let selectedSq = null;
+        let dragSrc = null;
+        let pendingPromotion = null;
+        let timers = { w: 600, b: 600 };
+        let timerInterval = null;
+        let isAIThinking = false;
+        let gameActive = false;
+        let gameMode = 'ai';
 
-        const faMap = {
-            'r': 'fa-chess-rook', 'n': 'fa-chess-knight', 'b': 'fa-chess-bishop',
-            'q': 'fa-chess-queen', 'k': 'fa-chess-king', 'p': 'fa-chess-pawn'
+        const sounds = {
+            move: new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_common/default/move-self.mp3'),
+            capture: new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_common/default/capture.mp3'),
+            notify: new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_common/default/notify.mp3')
         };
+
+        const faMap = { 
+            'r': 'fa-chess-rook', 
+            'n': 'fa-chess-knight', 
+            'b': 'fa-chess-bishop', 
+            'q': 'fa-chess-queen', 
+            'k': 'fa-chess-king', 
+            'p': 'fa-chess-pawn' 
+        };
+        
+        function init() {
+            const savedFen = localStorage.getItem('chess_fen');
+            if (savedFen) game.load(savedFen);
+            
+            const savedMode = localStorage.getItem('chess_mode');
+            if(savedMode) {
+                gameMode = savedMode;
+                document.getElementById('game-mode').value = savedMode;
+            }
+
+            updatePlayerLabels();
+            updateAILevelVisibility();
+            renderBoard();
+            updateUI();
+        }
+
+        function startGame() {
+            gameActive = true;
+            document.getElementById('start-overlay').classList.add('hidden');
+            startTimer();
+            if(gameMode === 'ai' && game.turn() === 'b' && !game.game_over()) {
+                isAIThinking = true;
+                setTimeout(makeAIMove, 500);
+            }
+        }
+
+        function setGameMode(mode) {
+            gameMode = mode;
+            localStorage.setItem('chess_mode', mode);
+            updatePlayerLabels();
+            updateAILevelVisibility();
+            if(gameActive && mode === 'ai' && game.turn() === 'b' && !game.game_over() && !isAIThinking) {
+                isAIThinking = true;
+                setTimeout(makeAIMove, 500);
+            }
+            updateUI();
+        }
+
+        function updatePlayerLabels() {
+            const el = document.getElementById('player-label-b');
+            el.innerHTML = gameMode === 'ai' 
+                ? '<i class="fas fa-robot mr-2"></i>AI (Black)' 
+                : '<i class="fas fa-user mr-2"></i>Player 2 (Black)';
+        }
+
+        function updateAILevelVisibility() {
+            const aiLevel = document.getElementById('ai-level');
+            if (gameMode === 'ai') {
+                aiLevel.classList.remove('hidden');
+            } else {
+                aiLevel.classList.add('hidden');
+            }
+        }
 
         function renderBoard() {
             boardEl.innerHTML = '';
             const history = game.history({ verbose: true });
             const lastMove = history.length > 0 ? history[history.length - 1] : null;
 
-            // chess.js SQUARES go from a8 to h1
             for (let r = 0; r < 8; r++) {
                 for (let c = 0; c < 8; c++) {
-                    const squareLabel = String.fromCharCode(97 + c) + (8 - r);
-                    const piece = game.get(squareLabel);
-                    const div = document.createElement('div');
-                    
+                    const squareId = String.fromCharCode(97 + c) + (8 - r);
+                    const piece = game.get(squareId);
                     const isDark = (r + c) % 2 !== 0;
-                    div.className = `square ${isDark ? 'black-sq' : 'white-sq'}`;
+
+                    const sqDiv = document.createElement('div');
+                    sqDiv.className = `square ${isDark ? 'black-sq' : 'white-sq'}`;
+                    sqDiv.dataset.square = squareId;
                     
-                    if (selectedSq === squareLabel) div.classList.add('selected');
-                    if (lastMove && (squareLabel === lastMove.from || squareLabel === lastMove.to)) {
-                        div.classList.add('last-move');
-                    }
+                    if (selectedSq === squareId) sqDiv.classList.add('selected');
+                    if (lastMove && (squareId === lastMove.from || squareId === lastMove.to)) sqDiv.classList.add('last-move');
+
+                    if (c === 0) sqDiv.innerHTML += `<span class="coord-num">${8-r}</span>`;
+                    if (r === 7) sqDiv.innerHTML += `<span class="coord-char">${String.fromCharCode(97+c)}</span>`;
 
                     if (piece) {
-                        const icon = faMap[piece.type];
-                        const colorClass = piece.color === 'w' ? 'piece-white' : 'piece-black';
-                        div.innerHTML = `<i class="fas ${icon} ${colorClass}"></i>`;
+                        const pDiv = document.createElement('div');
+                        pDiv.className = `piece ${piece.color === 'w' ? 'piece-white' : 'piece-black'}`;
+                        pDiv.innerHTML = `<i class="fas ${faMap[piece.type]}"></i>`;
+                        pDiv.draggable = true;
+                        pDiv.addEventListener('dragstart', (e) => {
+                            if (!gameActive || game.game_over() || isAIThinking) return e.preventDefault();
+                            if (piece.color !== game.turn()) return e.preventDefault();
+                            if (gameMode === 'ai' && piece.color === 'b') return e.preventDefault();
+                            dragSrc = squareId;
+                            selectedSq = squareId;
+                            renderBoard();
+                        });
+                        sqDiv.appendChild(pDiv);
                     }
 
-                    div.onclick = () => handleSquareClick(squareLabel);
-                    boardEl.appendChild(div);
+                    sqDiv.addEventListener('dragover', (e) => e.preventDefault());
+                    sqDiv.addEventListener('drop', (e) => {
+                        if (!gameActive) return;
+                        attemptMove(dragSrc, squareId);
+                        dragSrc = null;
+                    });
+                    sqDiv.onclick = () => {
+                        if (!gameActive || isAIThinking) return;
+                        const p = game.get(squareId);
+                        if (p && p.color === game.turn() && (gameMode !== 'ai' || p.color === 'w')) {
+                            selectedSq = squareId;
+                            renderBoard();
+                        } else if (selectedSq) {
+                            attemptMove(selectedSq, squareId);
+                        }
+                    };
+                    boardEl.appendChild(sqDiv);
                 }
             }
-            updateUI();
-        }
-
-        function handleSquareClick(square) {
-            if (game.game_over()) return;
-
-            if (selectedSq === null) {
-                const piece = game.get(square);
-                if (piece && piece.color === game.turn()) {
-                    selectedSq = square;
-                }
-            } else {
-                const move = game.move({
-                    from: selectedSq,
-                    to: square,
-                    promotion: 'q' // Always promote to queen for simplicity
+            
+            if (selectedSq) {
+                game.moves({ square: selectedSq, verbose: true }).forEach(m => {
+                    const target = document.querySelector(`[data-square="${m.to}"]`);
+                    if (target) target.classList.add(m.flags.includes('c') || m.flags.includes('e') ? 'capture-hint' : 'highlight');
                 });
+            }
+        }
 
+        function attemptMove(from, to) {
+            const move = game.moves({ verbose: true }).find(m => m.from === from && m.to === to);
+            if (!move) { 
+                selectedSq = null; 
+                renderBoard(); 
+                return; 
+            }
+            if (move.flags.includes('p')) {
+                pendingPromotion = { from, to };
+                document.getElementById('promotion-modal').classList.remove('hidden');
+            } else {
+                executeMove(from, to);
+            }
+        }
+
+        function finalizePromotion(piece) {
+            if (!pendingPromotion) return;
+            executeMove(pendingPromotion.from, pendingPromotion.to, piece);
+            document.getElementById('promotion-modal').classList.add('hidden');
+            pendingPromotion = null;
+        }
+
+        function executeMove(from, to, promotion = 'q') {
+            const m = game.move({ from, to, promotion });
+            if (m) {
+                playSound(m);
                 selectedSq = null;
-                if (move === null) {
-                    // Flash red or similar for illegal move
-                } else {
-                    // If you want a random AI to play black:
-                    if (!game.game_over() && game.turn() === 'b') {
-                        setTimeout(makeRandomMove, 500);
+                localStorage.setItem('chess_fen', game.fen());
+                renderBoard();
+                updateUI();
+                checkGameOver();
+                
+                if (gameMode === 'ai' && !game.game_over() && game.turn() === 'b' && !isAIThinking) {
+                    isAIThinking = true;
+                    setTimeout(makeAIMove, 400);
+                }
+            }
+        }
+
+        function evaluateBoard(game) {
+            let totalEvaluation = 0;
+            const board = game.board();
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    if (board[i][j]) {
+                        const piece = board[i][j];
+                        let value = weights[piece.type];
+                        totalEvaluation += (piece.color === 'w' ? -value : value);
                     }
                 }
             }
-            renderBoard();
+            return totalEvaluation;
         }
 
-        function makeRandomMove() {
+        function minimax(game, depth, alpha, beta, isMaximisingPlayer) {
+            if (depth === 0 || game.game_over()) {
+                return -evaluateBoard(game);
+            }
+
             const moves = game.moves();
-            if (moves.length === 0) return;
-            const randomIdx = Math.floor(Math.random() * moves.length);
-            game.move(moves[randomIdx]);
-            renderBoard();
+            if (isMaximisingPlayer) {
+                let bestEval = -Infinity;
+                for (const move of moves) {
+                    game.move(move);
+                    bestEval = Math.max(bestEval, minimax(game, depth - 1, alpha, beta, !isMaximisingPlayer));
+                    game.undo();
+                    alpha = Math.max(alpha, bestEval);
+                    if (beta <= alpha) break;
+                }
+                return bestEval;
+            } else {
+                let bestEval = Infinity;
+                for (const move of moves) {
+                    game.move(move);
+                    bestEval = Math.min(bestEval, minimax(game, depth - 1, alpha, beta, !isMaximisingPlayer));
+                    game.undo();
+                    beta = Math.min(beta, bestEval);
+                    if (beta <= alpha) break;
+                }
+                return bestEval;
+            }
+        }
+
+        function makeAIMove() {
+            const moves = game.moves();
+            if (moves.length === 0 || game.game_over()) {
+                isAIThinking = false;
+                return;
+            }
+
+            const level = parseInt(document.getElementById('ai-level').value);
+            let bestMove = null;
+            
+            if (level === 1) {
+                bestMove = moves[Math.floor(Math.random() * moves.length)];
+            } else {
+                let bestValue = -Infinity;
+                let depth = level === 2 ? 2 : 3;
+
+                for (let i = 0; i < moves.length; i++) {
+                    game.move(moves[i]);
+                    let boardValue = minimax(game, depth - 1, -Infinity, Infinity, false);
+                    game.undo();
+                    if (boardValue > bestValue) {
+                        bestValue = boardValue;
+                        bestMove = moves[i];
+                    }
+                }
+            }
+
+            const moveResult = game.move(bestMove || moves[0]);
+            isAIThinking = false;
+            
+            if (moveResult) {
+                playSound(moveResult);
+                localStorage.setItem('chess_fen', game.fen());
+                renderBoard();
+                updateUI();
+                checkGameOver();
+            }
+        }
+
+        function playSound(m) {
+            try {
+                if (m.flags.includes('c') || m.flags.includes('e')) {
+                    sounds.capture.play().catch(e => console.log('Sound play failed'));
+                } else {
+                    sounds.move.play().catch(e => console.log('Sound play failed'));
+                }
+            } catch (e) {
+                console.log('Sound error:', e);
+            }
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!gameActive || game.game_over()) {
+                    clearInterval(timerInterval);
+                    return;
+                }
+                timers[game.turn()]--;
+                const t = timers[game.turn()];
+                
+                if (t <= 0) {
+                    clearInterval(timerInterval);
+                    gameActive = false;
+                    const winner = game.turn() === 'w' ? 'Black' : 'White';
+                    document.getElementById('status').innerText = `Game Over: ${winner} wins on time!`;
+                    alert(`Time's up! ${winner} wins!`);
+                    return;
+                }
+                
+                document.getElementById(`timer-${game.turn()}`).innerText = 
+                    `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
+            }, 1000);
         }
 
         function updateUI() {
             const status = document.getElementById('status');
-            const historyDiv = document.getElementById('history');
-            
-            // Status
-            if (game.in_checkmate()) status.innerText = "Checkmate!";
-            else if (game.in_draw()) status.innerText = "Draw";
-            else status.innerText = game.turn() === 'w' ? "White's Turn" : "Black's Turn";
-
-            // History
-            const moves = game.history();
-            historyDiv.innerHTML = '';
-            for (let i = 0; i < moves.length; i += 2) {
-                historyDiv.innerHTML += `
-                    <div class="flex text-sm border-b border-slate-800 pb-1">
-                        <span class="w-8 text-slate-600">${Math.floor(i/2)+1}.</span>
-                        <span class="flex-1 font-bold text-cyan-400">${moves[i]}</span>
-                        <span class="flex-1 font-bold text-orange-400">${moves[i+1] || ''}</span>
-                    </div>`;
+            if (!gameActive) {
+                status.innerText = "Paused";
+            } else if (game.in_checkmate()) {
+                const winner = game.turn() === 'w' ? 'Black' : 'White';
+                status.innerText = `Checkmate! ${winner} wins!`;
+            } else if (game.in_draw()) {
+                status.innerText = "Draw!";
+            } else if (game.in_check()) {
+                status.innerText = (game.turn() === 'w' ? "White" : "Black") + " in Check!";
+            } else {
+                status.innerText = game.turn() === 'w' ? "White's Turn" : "Black's Turn";
             }
-            historyDiv.scrollTop = historyDiv.scrollHeight;
+
+            const historyEl = document.getElementById('history');
+            const moves = game.history();
+            let historyHTML = '';
+            for (let i = 0; i < moves.length; i += 2) {
+                const moveNum = Math.floor(i / 2) + 1;
+                const whiteMove = moves[i];
+                const blackMove = moves[i + 1] || '';
+                historyHTML += `<div class='flex'><span class='w-8 opacity-50'>${moveNum}.</span><span class='flex-1'>${whiteMove}</span>`;
+                if (blackMove) {
+                    historyHTML += `<span class='flex-1'>${blackMove}</span>`;
+                }
+                historyHTML += `</div>`;
+            }
+            historyEl.innerHTML = historyHTML;
+            historyEl.scrollTop = historyEl.scrollHeight;
+            
+            const capturedW = document.getElementById('captured-w');
+            const capturedB = document.getElementById('captured-b');
+            capturedW.innerHTML = '';
+            capturedB.innerHTML = '';
+            
+            game.history({verbose:true}).forEach(m => {
+                if (m.captured) {
+                    const icon = `<i class="fas ${faMap[m.captured]} captured-piece ${m.color === 'w' ? 'piece-black' : 'piece-white'}"></i>`;
+                    (m.color === 'w' ? capturedB : capturedW).innerHTML += icon;
+                }
+            });
+        }
+
+        function undoMove() {
+            if (game.history().length === 0) return;
+            
+            // In AI mode, undo two moves (player + AI)
+            if (gameMode === 'ai' && game.history().length >= 2) {
+                game.undo();
+                game.undo();
+            } else {
+                game.undo();
+            }
+            
+            selectedSq = null;
+            isAIThinking = false;
+            localStorage.setItem('chess_fen', game.fen());
+            renderBoard();
+            updateUI();
         }
 
         function resetGame() {
+            if (timerInterval) clearInterval(timerInterval);
             game.reset();
+            localStorage.removeItem('chess_fen');
+            timers = { w: 600, b: 600 };
+            gameActive = false;
+            isAIThinking = false;
             selectedSq = null;
+            pendingPromotion = null;
+            document.getElementById('timer-w').innerText = '10:00';
+            document.getElementById('timer-b').innerText = '10:00';
+            document.getElementById('start-overlay').classList.remove('hidden');
+            document.getElementById('promotion-modal').classList.add('hidden');
             renderBoard();
+            updateUI();
         }
 
-        renderBoard();
+        function changeTheme(theme) {
+            const board = document.getElementById('board');
+            board.classList.remove('theme-green', 'theme-wooden', 'theme-ocean');
+            board.classList.add(`theme-${theme}`);
+        }
+
+        function checkGameOver() {
+            let status = "";
+            let winner = "";
+            
+            if (game.in_checkmate()) {
+                winner = game.turn() === 'w' ? "Black" : "White";
+                status = `Game Over: ${winner} wins by Checkmate!`;
+            } else if (game.in_draw()) {
+                if (game.in_stalemate()) {
+                    status = "Game Over: Draw by Stalemate";
+                } else if (game.in_threefold_repetition()) {
+                    status = "Game Over: Draw by Repetition";
+                } else if (game.insufficient_material()) {
+                    status = "Game Over: Draw by Insufficient Material";
+                } else {
+                    status = "Game Over: Draw";
+                }
+            }
+
+            if (status) {
+                gameActive = false;
+                isAIThinking = false;
+                if (timerInterval) clearInterval(timerInterval);
+                document.getElementById('status').innerText = status;
+                setTimeout(() => {
+                    alert(status);
+                }, 100);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
